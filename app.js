@@ -167,6 +167,10 @@ app.get('/admin/logout', (req, res) => {
   res.redirect('/admin');
 });
 
+// ============================================================
+// 以下為批量功能與修改功能（價格、庫存、分類、名稱）
+// ============================================================
+
 // ========== 批量匯入 ==========
 app.get('/admin/bulk-import', (req, res) => {
   if (!req.session.isAdmin) return res.status(401).send('Unauthorized');
@@ -267,6 +271,63 @@ app.post('/admin/batch-update-codes', (req, res) => {
   }
   db.writeData(data);
   res.redirect(`/admin/dashboard?msg=✅ 成功更新 ${count} 張卡片的編號！`);
+});
+
+// ========== 修改價格 ==========
+app.post('/admin/update-price/:id', (req, res) => {
+  if (!req.session.isAdmin) return res.status(401).send('Unauthorized');
+  const { price } = req.body;
+  const newPrice = parseInt(price);
+  if (isNaN(newPrice) || newPrice < 0) {
+    return res.send('❌ 請輸入有效的價格（必須大於等於 0）');
+  }
+  try {
+    db.updateCard(req.params.id, { price: newPrice });
+    res.redirect('/admin/dashboard?msg=✅ 價格已更新為 ' + newPrice);
+  } catch (err) {
+    res.send('更新失敗：' + err.message);
+  }
+});
+
+// ========== 更新庫存（補貨） ==========
+app.post('/admin/update-stock/:id', (req, res) => {
+  if (!req.session.isAdmin) return res.status(401).send('Unauthorized');
+  const { stock } = req.body;
+  const newStock = parseInt(stock);
+  if (isNaN(newStock) || newStock < 0) {
+    return res.send('❌ 請輸入有效的數字（必須大於等於 0）');
+  }
+  try {
+    db.updateCard(req.params.id, { stock: newStock });
+    res.redirect('/admin/dashboard?msg=✅ 庫存已更新為 ' + newStock);
+  } catch (err) {
+    res.send('更新失敗：' + err.message);
+  }
+});
+
+// ========== 更新分類 ==========
+app.post('/admin/update-category/:id', (req, res) => {
+  if (!req.session.isAdmin) return res.status(401).send('Unauthorized');
+  const { category } = req.body;
+  try {
+    db.updateCard(req.params.id, { category });
+    res.redirect('/admin/dashboard?msg=✅ 分類已更新為 ' + category);
+  } catch (err) {
+    res.send('更新失敗：' + err.message);
+  }
+});
+
+// ========== 更新名稱 ==========
+app.post('/admin/update-name/:id', (req, res) => {
+  if (!req.session.isAdmin) return res.status(401).send('Unauthorized');
+  const { name } = req.body;
+  if (!name || name.trim() === '') return res.send('❌ 名稱不能為空');
+  try {
+    db.updateCard(req.params.id, { name: name.trim() });
+    res.redirect('/admin/dashboard?msg=✅ 名稱已更新為 ' + name.trim());
+  } catch (err) {
+    res.send('更新失敗：' + err.message);
+  }
 });
 
 app.listen(PORT, () => console.log(`✅ 網站已啟動，請打開瀏覽器訪問 http://localhost:${PORT}`));
