@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>結帳</title>
+  <style>
+    body { font-family: Arial, sans-serif; padding: 40px; max-width: 500px; margin: 0 auto; }
+    input, button { width: 100%; padding: 12px; margin: 10px 0; border-radius: 6px; border: 1px solid #ddd; font-size: 16px; }
+    button { background: #27ae60; color: white; font-weight: bold; border: none; cursor: pointer; }
+    .result { margin-top: 20px; padding: 15px; background: #d4edda; border-radius: 6px; }
+  </style>
+</head>
+<body>
+  <h1>📝 填寫暱稱下單</h1>
+  <form id="orderForm">
+    <input type="text" id="nickname" placeholder="請輸入你的暱稱（例如：小智）" required>
+    <button type="submit">📦 送出訂單</button>
+  </form>
+  <div id="result"></div>
+  <a href="/">← 回到首頁</a>
+  <script>
+    document.getElementById('orderForm').onsubmit = async function(e) {
+      e.preventDefault();
+      const nickname = document.getElementById('nickname').value;
+      const items = JSON.parse(localStorage.getItem('cart') || '[]');
+      if (items.length === 0) return alert('購物車是空的！');
+      const res = await fetch('/api/place-order', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ nickname, items })
+      });
+      const data = await res.json();
+      if (data.success) {
+        document.getElementById('result').innerHTML = `<div class="result">✅ 下單成功！訂單編號：<strong>${data.orderNumber}</strong><br>請截圖此編號以備查詢。</div>`;
+        localStorage.removeItem('cart');
+      } else {
+        alert('❌ 下單失敗：' + data.msg);
+      }
+    };
+  </script>
+</body>
+</html>

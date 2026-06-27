@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>🛒 卡片商店 - 管理後台</title>
+  <style>
+    body { font-family: "Microsoft YaHei", "PingFang TC", sans-serif; background: #f5f7fa; margin: 0; padding: 20px; }
+    .container { max-width: 1300px; margin: 0 auto; }
+    .header { background: white; padding: 15px 25px; border-radius: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px; }
+    .header h1 { margin: 0; font-size: 24px; color: #333; }
+    .logout-btn { background: #ff4757; color: white; padding: 8px 20px; border-radius: 6px; text-decoration: none; font-weight: bold; }
+    .logout-btn:hover { background: #ff6b81; }
+    .card-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 25px; margin-bottom: 30px; }
+    .func-card { background: white; border-radius: 12px; padding: 20px 25px; box-shadow: 0 2px 10px rgba(0,0,0,0.06); border-top: 5px solid #4a90d9; }
+    .func-card.green { border-top-color: #2ecc71; }
+    .func-card.orange { border-top-color: #f39c12; }
+    .func-card.purple { border-top-color: #9b59b6; }
+    .func-card.red { border-top-color: #e74c3c; }
+    .func-card h3 { margin-top: 0; font-size: 18px; color: #2c3e50; display: flex; align-items: center; gap: 8px; }
+    .func-card .description { background: #f8f9fa; padding: 10px 14px; border-radius: 6px; color: #555; font-size: 14px; border-left: 4px solid #bdc3c7; margin: 10px 0 15px 0; line-height: 1.6; }
+    .func-card .description strong { color: #e67e22; }
+    .func-card label { font-weight: bold; font-size: 14px; color: #34495e; display: block; margin-top: 8px; }
+    .func-card input, .func-card select, .func-card textarea { 
+      width: 100%; padding: 8px 12px; margin: 5px 0 10px 0; 
+      border: 1px solid #ddd; border-radius: 6px; font-size: 14px; box-sizing: border-box; 
+    }
+    .func-card textarea { font-family: "Courier New", monospace; }
+    .func-card button { 
+      background: #4a90d9; color: white; border: none; padding: 10px 20px; 
+      border-radius: 6px; font-size: 16px; font-weight: bold; cursor: pointer; 
+      transition: 0.2s; margin-top: 5px;
+    }
+    .func-card button:hover { opacity: 0.85; transform: scale(1.01); }
+    .func-card .inline-group { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+    .func-card .inline-group input { width: auto; flex: 1; min-width: 60px; }
+    .func-card .hint { font-size: 13px; color: #7f8c8d; margin-top: 8px; border-top: 1px dashed #eee; padding-top: 8px; }
+    table { width: 100%; border-collapse: collapse; background: white; border-radius: 10px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
+    th { background: #34495e; color: white; padding: 12px; text-align: left; }
+    td { padding: 10px 12px; border-bottom: 1px solid #ecf0f1; }
+    .section-title { font-size: 22px; font-weight: bold; margin: 30px 0 15px 0; color: #2c3e50; border-left: 6px solid #4a90d9; padding-left: 12px; }
+    .badge { background: #f1c40f; color: #333; padding: 2px 10px; border-radius: 12px; font-size: 12px; }
+    .badge.cancelled { background: #e74c3c; color: white; }
+    .btn-sm { padding: 4px 12px; font-size: 13px; border: none; border-radius: 4px; cursor: pointer; }
+    .btn-danger { background: #e74c3c; color: white; }
+    .btn-danger:hover { background: #c0392b; }
+    .msg-box { background: #d4edda; color: #155724; padding: 15px; border-radius: 8px; border: 1px solid #c3e6cb; margin-bottom: 20px; }
+    @media (max-width: 800px) { .card-grid { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+<div class="container">
+
+  <div class="header">
+    <h1>🛒 卡片賣場 後台管理</h1>
+    <a href="/admin/logout" class="logout-btn">🚪 登出</a>
+  </div>
+
+  <% if (typeof msg !== 'undefined' && msg) { %>
+    <div class="msg-box">✅ <%= msg %></div>
+  <% } %>
+
+  <div class="card-grid">
+
+    <div class="func-card">
+      <h3>✏️ 01. 手動新增單張卡片</h3>
+      <div class="description">📌 <strong>什麼時候用？</strong> 如果你臨時只有「一張」新卡片要加，不想動到大批照片的時候。</div>
+      <form method="POST" action="/admin/add-card" enctype="multipart/form-data">
+        <label>卡片編號 (必填，不可重複)</label>
+        <input type="text" name="card_code" placeholder="例如：WH12-088" required>
+        <label>卡片名稱 (必填)</label>
+        <input type="text" name="name" placeholder="例如：噴火龍" required>
+        <label>分類</label>
+        <input type="text" name="category" placeholder="例如：寶可夢、遊戲王">
+        <label>價格 (數字)</label>
+        <input type="number" name="price" placeholder="例如：150" required>
+        <label>庫存數量 (數字)</label>
+        <input type="number" name="stock" placeholder="例如：5" required>
+        <label>上傳照片</label>
+        <input type="file" name="image" accept="image/*">
+        <button type="submit">✅ 新增這張卡片</button>
+      </form>
+    </div>
+
+    <div class="func-card green">
+      <h3>📸 02. 批量匯入（照片自動變商品）</h3>
+      <div class="description">📌 <strong>什麼時候用？</strong> 你一次丟了「幾十張或幾千張照片」進 <code>public/uploads</code> 資料夾時，按這個按鈕，系統會自動把它們全部變成商品。<br>⚠️ <strong>注意：</strong> 匯入後價格和庫存會是 0，請之後再手動修改或使用下方功能調整。</div>
+      <a href="/admin/bulk-import" onclick="return confirm('確定要執行批量匯入嗎？系統會掃描 uploads 資料夾內所有圖片')" style="display:inline-block;background:#2ecc71;color:white;padding:10px 20px;border-radius:6px;text-decoration:none;font-weight:bold;">🚀 執行批量匯入</a>
+      <div class="hint">💡 前往網址：你的網址/admin/bulk-import</div>
+    </div>
+
+    <div class="func-card orange">
+      <h3>⚡ 03. 一鍵 W?-??? 格式（固定範圍）</h3>
+      <div class="description">📌 <strong>什麼時候用？</strong> 如果你的系列是「固定數量」，例如 W1 有 60 張、W2 有 60 張 ... 到 W17 都是 60 張。<br>系統會把你的卡片依序變成 W1-001, W1-002 ... W17-060。</div>
+      <form method="POST" action="/admin/batch-generate-w-codes">
+        <div class="inline-group">
+          <label>前綴</label>
+          <input type="text" name="prefix" value="W" style="width:60px;">
+          <label>系列從</label>
+          <input type="number" name="series_start" value="1" style="width:60px;">
+          <label>到</label>
+          <input type="number" name="series_end" value="17" style="width:60px;">
+        </div>
+        <div class="inline-group">
+          <label>流水號從</label>
+          <input type="number" name="seq_start" value="1" style="width:60px;">
+          <label>到</label>
+          <input type="number" name="seq_end" value="60" style="width:60px;">
+          <label>補零位數</label>
+          <input type="number" name="padding" value="3" style="width:60px;">
+        </div>
+        <button type="submit" onclick="return confirm('確定要全部改成 W?-??? 格式嗎？')" style="background:#f39c12;">🔄 執行固定格式編號</button>
+      </form>
+      <div class="hint">💡 範例：如果填 1~17、1~60、補零 3，會產生 W1-001 ~ W17-060</div>
+    </div>
+
+    <div class="func-card purple">
+      <h3>📝 04. 自定義系列編號（各系列數量不同）</h3>
+      <div class="description">📌 <strong>什麼時候用？</strong> 這是「最強彈性」的功能！當你的 WH12 只有 30 張、WH13 有 50 張、WH17 有 80 張... <br>每個系列的數量「不一樣」時，就用這個！<br>⚠️ <strong>格式：</strong> 前綴:起始-結束（一行一個）</div>
+      <form method="POST" action="/admin/batch-custom-seq">
+        <label>請輸入各系列的範圍（一行一個）：</label>
+        <textarea name="mapping" rows="5" style="width:100%;font-family:monospace;" placeholder="範例：&#10;WH12:1-30&#10;WH13:1-50&#10;WH17:1-80"></textarea>
+        <label>補零位數 (例如 3 就是 001)</label>
+        <input type="number" name="padding" value="3" style="width:100px;">
+        <button type="submit" onclick="return confirm('確定依照自訂規則重新編號嗎？')" style="background:#9b59b6;">🔄 執行自訂編號</button>
+      </form>
+      <div class="hint">💡 範例：如果你有 WH12(30張)、WH13(50張)，就輸入兩行：WH12:1-30 和 WH13:1-50</div>
+    </div>
+
+    <div class="func-card red">
+      <h3>🔧 05. 批次取代文字（把 A 換成 B）</h3>
+      <div class="description">📌 <strong>什麼時候用？</strong> 如果你想把所有卡片編號中的 <strong>「W」改成「WH」</strong>，或是把 <strong>「-」改成「_」</strong>，就用這個取代功能。</div>
+      <form method="POST" action="/admin/batch-update-codes">
+        <label>把編號中的這個文字：</label>
+        <input type="text" name="old_text" placeholder="例如：W" required>
+        <label>取代成：</label>
+        <input type="text" name="new_text" placeholder="例如：WH" required>
+        <button type="submit" onclick="return confirm('確定要執行取代嗎？此動作無法復原！')" style="background:#e74c3c;">🔁 執行取代</button>
+      </form>
+      <div class="hint">💡 範例：把「W1-001」改成「WH1-001」→ 舊文字填 W，新文字填 WH</div>
+    </div>
+
+    <div class="func-card" style="border-top-color:#1abc9c;">
+      <h3>👁️ 06. 前往前台（顧客看到的畫面）</h3>
+      <div class="description">📌 <strong>什麼時候用？</strong> 當你整理完卡片後，想看看「顧客實際看到的畫面」長怎樣，就點這裡。</div>
+      <a href="/" target="_blank" style="display:inline-block;background:#1abc9c;color:white;padding:10px 20px;border-radius:6px;text-decoration:none;font-weight:bold;">🏠 開啟前台首頁</a>
+      <div class="hint">💡 會在新分頁打開，讓你可以同時對照後台和前台的顯示狀況。</div>
+    </div>
+
+  </div>
+
+  <div class="section-title">📇 目前資料庫中的卡片 (共 <%= cards ? cards.length : 0 %> 張)</div>
+  <div style="overflow-x:auto;margin-bottom:30px;">
+    <table>
+      <thead><tr><th>ID</th><th>卡片編號</th><th>名稱</th><th>分類</th><th>價格</th><th>庫存</th><th>操作</th></tr></thead>
+      <tbody>
+        <% if (cards && cards.length > 0) { %>
+          <% cards.forEach(c => { %>
+            <tr>
+              <td><%= c.id %></td>
+              <td><strong><%= c.card_code %></strong></td>
+              <td><%= c.name %></td>
+              <td><%= c.category || '未分類' %></td>
+              <td>$<%= c.price %></td>
+              <td><%= c.stock %></td>
+              <td>
+                <form method="POST" action="/admin/delete-card/<%= c.id %>" style="display:inline;" onsubmit="return confirm('確定要刪除這張卡片嗎？')">
+                  <button type="submit" class="btn-sm btn-danger">🗑️ 刪除</button>
+                </form>
+              </td>
+            </tr>
+          <% }) %>
+        <% } else { %>
+          <tr><td colspan="7" style="text-align:center;color:#999;">目前還沒有卡片，請先使用「批量匯入」或「手動新增」。</td></tr>
+        <% } %>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="section-title">📦 目前訂單 (共 <%= orders ? orders.length : 0 %> 筆)</div>
+  <div style="overflow-x:auto;margin-bottom:30px;">
+    <table>
+      <thead><tr><th>訂單編號</th><th>顧客暱稱</th><th>總金額</th><th>狀態</th><th>下單時間</th><th>操作</th></tr></thead>
+      <tbody>
+        <% if (orders && orders.length > 0) { %>
+          <% orders.forEach(o => { %>
+            <tr>
+              <td><strong><%= o.order_number %></strong></td>
+              <td><%= o.customer_nickname %></td>
+              <td>$<%= o.total_price %></td>
+              <td>
+                <% if (o.status === 'pending') { %>
+                  <span class="badge">🟡 待處理</span>
+                <% } else { %>
+                  <span class="badge cancelled">🔴 已取消</span>
+                <% } %>
+              </td>
+              <td><%= new Date(o.created_at).toLocaleString() %></td>
+              <td>
+                <% if (o.status === 'pending') { %>
+                  <form method="POST" action="/admin/cancel-order/<%= o.order_number %>" style="display:inline;" onsubmit="return confirm('確定要「取消」這筆訂單嗎？庫存會自動加回去。')">
+                    <button type="submit" class="btn-sm btn-danger">❌ 取消訂單</button>
+                  </form>
+                <% } else { %>
+                  <span style="color:#999;">已取消</span>
+                <% } %>
+              </td>
+            </tr>
+          <% }) %>
+        <% } else { %>
+          <tr><td colspan="6" style="text-align:center;color:#999;">目前還沒有訂單。</td></tr>
+        <% } %>
+      </tbody>
+    </table>
+  </div>
+
+</div>
+</body>
+</html>

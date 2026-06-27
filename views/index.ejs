@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>卡片商店</title>
+  <style>
+    body { font-family: Arial, sans-serif; padding: 20px; background: #f8f9fa; }
+    .grid { display: flex; flex-wrap: wrap; gap: 20px; }
+    .card { border: 1px solid #ddd; padding: 15px; border-radius: 10px; width: 200px; background: white; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
+    .card img { width: 100%; height: 150px; object-fit: cover; border-radius: 6px; }
+    .card h3 { margin: 10px 0 5px; font-size: 16px; }
+    .card .code { color: #666; font-size: 13px; }
+    .card .price { color: #e67e22; font-weight: bold; font-size: 18px; }
+    .card .stock { font-size: 13px; color: #27ae60; }
+    button { background: #3498db; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; }
+    button:hover { opacity: 0.8; }
+    .cart-bar { position: fixed; bottom: 20px; right: 20px; background: #2c3e50; color: white; padding: 15px 25px; border-radius: 50px; box-shadow: 0 4px 10px rgba(0,0,0,0.3); }
+    .cart-bar a { color: white; text-decoration: none; font-weight: bold; }
+  </style>
+</head>
+<body>
+  <h1>🃏 所有卡片</h1>
+  <div class="grid">
+    <% cards.forEach(c => { %>
+      <div class="card">
+        <img src="<%= c.image_url || '/uploads/default.jpg' %>" alt="<%= c.name %>">
+        <h3><%= c.name %></h3>
+        <div class="code">編號：<%= c.card_code %></div>
+        <div>分類：<%= c.category %></div>
+        <div class="price">$<%= c.price %></div>
+        <div class="stock">📦 庫存：<%= c.stock %></div>
+        <button onclick="addToCart('<%= c.card_code %>','<%= c.name %>',<%= c.price %>,<%= c.stock %>)">加入購物車</button>
+      </div>
+    <% }) %>
+  </div>
+  <div class="cart-bar">
+    <a href="/checkout">🛒 去結帳</a>
+  </div>
+  <script>
+    let cart = [];
+    function addToCart(code, name, price, stock) {
+      if (stock <= 0) return alert('庫存不足');
+      const existing = cart.find(i => i.card_code === code);
+      if (existing) existing.qty++;
+      else cart.push({ card_code: code, name, price, qty: 1 });
+      alert('✅ 已加入購物車');
+      localStorage.setItem('cart', JSON.stringify(cart));
+    }
+  </script>
+</body>
+</html>
