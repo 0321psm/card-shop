@@ -34,7 +34,7 @@ app.use('/uploads', express.static(uploadDir));
 
 // ========== 前台 ==========
 app.get('/', (req, res) => {
-  const cards = db.prepare('SELECT * FROM cards ORDER BY id DESC').all();
+  const cards = db.getCards();
   res.render('index', { cards });
 });
 
@@ -50,28 +50,27 @@ app.post('/api/place-order', (req, res) => {
   const parsedItems = JSON.parse(items);
   const totalPrice = parsedItems.reduce((sum, i) => sum + (i.price * i.qty), 0);
 
-  // 開始交易
-  const transaction = db.transaction(() => {
-    // 檢查並扣除庫存
-    for (let item of parsedItems) {
-      const stmt = db.prepare('SELECT stock FROM cards WHERE card_code = ?');
-      const row = stmt.get(item.card_code);
-      if (!row || row.stock < item.qty) {
-        throw new Error('庫存不足');
-      }
-      const updateStmt = db.prepare('UPDATE cards SET stock = stock - ? WHERE card_code = ?');
-      updateStmt.run(item.qty, item.card_code);
-    }
-
-    // 建立訂單
-    const insertStmt = db.prepare(
-      `INSERT INTO orders (order_number, customer_nickname, items, total_price, status) VALUES (?, ?, ?, ?, 'pending')`
-    );
-    insertStmt.run(orderNumber, nickname, JSON.stringify(parsedItems), totalPrice);
-  });
-
   try {
-    transaction();
+    // 檢查庫存並扣減
+    const data = db.readData();
+    for (let item of parsedItems) {
+      const card = data.cards.find(c => c.card_code === item.card_code);
+      if (!card || card.stock < item.qty) {
+        throw new Error(`庫存不足：${item.name}`);
+      }
+      card.stock -= item.qty;
+    }
+    // 建立訂單
+    const newOrder = {
+      order_number: orderNumber,
+      customer_nickname: nickname,
+      items: JSON.stringify(parsedItems),
+      total_price: totalPrice,
+      status: 'pending',
+      created_at: new Date().toISOString()
+    };
+    db.addOrder(newOrder);
+    db.writeData(data); // 寫回庫存變更
     res.json({ success: true, orderNumber });
   } catch (error) {
     res.json({ success: false, msg: error.message });
@@ -97,8 +96,8 @@ app.post('/admin/login', (req, res) => {
 app.get('/admin/dashboard', (req, res) => {
   if (!req.session.isAdmin) return res.redirect('/admin');
   const msg = req.query.msg || '';
-  const cards = db.prepare('SELECT * FROM cards ORDER BY id DESC').all();
-  const orders = db.prepare('SELECT * FROM orders ORDER BY id DESC').all();
+  const cards = db.getCards();
+  const orders = db.getOrders();
   res.render('admin_dashboard', { cards, orders, msg });
 });
 
@@ -107,42 +106,43 @@ app.post('/admin/add-card', upload.single('image'), (req, res) => {
   const { card_code, name, category, price, stock } = req.body;
   const image_url = req.file ? '/uploads/' + req.file.filename : null;
   try {
-    const stmt = db.prepare(
-      `INSERT INTO cards (card_code, name, category, price, stock, image_url) VALUES (?, ?, ?, ?, ?, ?)`
-    );
-    stmt.run(card_code, name, category, parseInt(price), parseInt(stock), image_url);
+    db.addCard({
+      card_code,
+      name,
+      category: category || '未分類',
+      price: parseInt(price),
+      stock: parseInt(stock),
+      image_url,
+      created_at: new Date().toISOString()
+    });
     res.redirect('/admin/dashboard?msg=✅ 手動新增卡片成功！');
   } catch (err) {
-    res.send('新增失敗，編號可能重複：' + err.message);
+    res.send('新增失敗：' + err.message);
   }
 });
 
 app.post('/admin/delete-card/:id', (req, res) => {
   if (!req.session.isAdmin) return res.status(401).send('Unauthorized');
-  const stmt = db.prepare('DELETE FROM cards WHERE id = ?');
-  stmt.run(req.params.id);
+  db.deleteCard(req.params.id);
   res.redirect('/admin/dashboard?msg=🗑️ 卡片已刪除');
 });
 
 app.post('/admin/cancel-order/:orderNumber', (req, res) => {
   if (!req.session.isAdmin) return res.status(401).send('Unauthorized');
   const orderNumber = req.params.orderNumber;
-  const orderStmt = db.prepare('SELECT items FROM orders WHERE order_number = ? AND status = ?');
-  const order = orderStmt.get(orderNumber, 'pending');
-  if (!order) return res.send('訂單不存在或已取消');
+  const order = db.getOrder(orderNumber);
+  if (!order || order.status !== 'pending') return res.send('訂單不存在或已取消');
 
+  // 加回庫存
   const items = JSON.parse(order.items);
-  const transaction = db.transaction(() => {
-    // 加回庫存
-    for (let item of items) {
-      const stmt = db.prepare('UPDATE cards SET stock = stock + ? WHERE card_code = ?');
-      stmt.run(item.qty, item.card_code);
-    }
-    // 取消訂單
-    const updateStmt = db.prepare("UPDATE orders SET status = 'cancelled' WHERE order_number = ?");
-    updateStmt.run(orderNumber);
-  });
-  transaction();
+  const data = db.readData();
+  for (let item of items) {
+    const card = data.cards.find(c => c.card_code === item.card_code);
+    if (card) card.stock += item.qty;
+  }
+  // 更新訂單狀態
+  db.updateOrderStatus(orderNumber, 'cancelled');
+  db.writeData(data);
   res.redirect('/admin/dashboard?msg=✅ 訂單已取消，庫存已自動加回');
 });
 
@@ -157,23 +157,26 @@ app.get('/admin/bulk-import', (req, res) => {
   const files = fs.readdirSync(uploadDir);
   let count = 0, errors = [];
   const imageExts = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
-  const insertStmt = db.prepare(
-    `INSERT INTO cards (card_code, name, category, price, stock, image_url) VALUES (?, ?, ?, ?, ?, ?)`
-  );
+  const data = db.readData();
   for (let file of files) {
     const ext = file.split('.').pop().toLowerCase();
     if (!imageExts.includes(ext)) continue;
     const card_code = file.replace(/\.[^/.]+$/, "");
     const image_url = '/uploads/' + file;
-    try {
-      const existing = db.prepare('SELECT * FROM cards WHERE card_code = ?').get(card_code);
-      if (existing) continue;
-      insertStmt.run(card_code, card_code, '未分類', 0, 0, image_url);
-      count++;
-    } catch (err) {
-      errors.push(card_code);
-    }
+    if (data.cards.some(c => c.card_code === card_code)) continue;
+    data.cards.push({
+      id: Date.now() + Math.random().toString(36).slice(2, 6),
+      card_code,
+      name: card_code,
+      category: '未分類',
+      price: 0,
+      stock: 0,
+      image_url,
+      created_at: new Date().toISOString()
+    });
+    count++;
   }
+  db.writeData(data);
   res.redirect(`/admin/dashboard?msg=✅ 批量匯入完成！成功新增 ${count} 張卡片。${errors.length > 0 ? ' ⚠️ 失敗：' + errors.join(',') : ''}`);
 });
 
@@ -191,16 +194,13 @@ app.post('/admin/batch-generate-w-codes', (req, res) => {
       expectedCodes.push(`${p}${s}-${String(seq).padStart(pad, '0')}`);
     }
   }
-  const ids = db.prepare('SELECT id FROM cards ORDER BY id ASC').all();
-  if (ids.length === 0) return res.send('❌ 沒有卡片，請先匯入');
-  const updateCount = Math.min(ids.length, expectedCodes.length);
-  const updateStmt = db.prepare('UPDATE cards SET card_code = ? WHERE id = ?');
-  const transaction = db.transaction(() => {
-    for (let i = 0; i < updateCount; i++) {
-      updateStmt.run(expectedCodes[i], ids[i].id);
-    }
-  });
-  transaction();
+  const data = db.readData();
+  if (data.cards.length === 0) return res.send('❌ 沒有卡片，請先匯入');
+  const updateCount = Math.min(data.cards.length, expectedCodes.length);
+  for (let i = 0; i < updateCount; i++) {
+    data.cards[i].card_code = expectedCodes[i];
+  }
+  db.writeData(data);
   res.redirect(`/admin/dashboard?msg=✅ 成功更新 ${updateCount} 張！範例：${expectedCodes[0]} ... ${expectedCodes[updateCount-1]}`);
 });
 
@@ -226,16 +226,13 @@ app.post('/admin/batch-custom-seq', (req, res) => {
     }
   }
   if (expectedCodes.length === 0) return res.send('❌ 格式錯誤！請用「前綴:起始-結束」');
-  const ids = db.prepare('SELECT id FROM cards ORDER BY id ASC').all();
-  if (ids.length === 0) return res.send('❌ 沒有卡片');
-  const updateCount = Math.min(ids.length, expectedCodes.length);
-  const updateStmt = db.prepare('UPDATE cards SET card_code = ? WHERE id = ?');
-  const transaction = db.transaction(() => {
-    for (let i = 0; i < updateCount; i++) {
-      updateStmt.run(expectedCodes[i], ids[i].id);
-    }
-  });
-  transaction();
+  const data = db.readData();
+  if (data.cards.length === 0) return res.send('❌ 沒有卡片');
+  const updateCount = Math.min(data.cards.length, expectedCodes.length);
+  for (let i = 0; i < updateCount; i++) {
+    data.cards[i].card_code = expectedCodes[i];
+  }
+  db.writeData(data);
   res.redirect(`/admin/dashboard?msg=✅ 成功更新 ${updateCount} 張！範例：${expectedCodes.slice(0,3).join(', ')} ...`);
 });
 
@@ -244,9 +241,16 @@ app.post('/admin/batch-update-codes', (req, res) => {
   if (!req.session.isAdmin) return res.status(401).send('Unauthorized');
   const { old_text, new_text } = req.body;
   if (!old_text || !new_text) return res.send('❌ 請輸入要取代的文字');
-  const stmt = db.prepare("UPDATE cards SET card_code = REPLACE(card_code, ?, ?) WHERE card_code LIKE ?");
-  const result = stmt.run(old_text, new_text, '%' + old_text + '%');
-  res.redirect(`/admin/dashboard?msg=✅ 成功更新 ${result.changes} 張卡片的編號！`);
+  const data = db.readData();
+  let count = 0;
+  for (let card of data.cards) {
+    if (card.card_code.includes(old_text)) {
+      card.card_code = card.card_code.replaceAll(old_text, new_text);
+      count++;
+    }
+  }
+  db.writeData(data);
+  res.redirect(`/admin/dashboard?msg=✅ 成功更新 ${count} 張卡片的編號！`);
 });
 
 app.listen(PORT, () => console.log(`✅ 網站已啟動，請打開瀏覽器訪問 http://localhost:${PORT}`));
