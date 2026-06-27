@@ -22,8 +22,28 @@ app.use(session({
   cookie: { secure: false }
 }));
 
-const uploadDir = process.env.DATA_PATH ? path.join(process.env.DATA_PATH, 'uploads') : path.join(__dirname, 'public', 'uploads');
-if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
+// ====== 自動偵測上傳目錄（解決權限問題） ======
+let uploadDir;
+try {
+  if (process.env.DATA_PATH) {
+    const testDir = path.join(process.env.DATA_PATH, 'uploads');
+    if (!fs.existsSync(testDir)) {
+      fs.mkdirSync(testDir, { recursive: true });
+    }
+    fs.writeFileSync(path.join(testDir, '.test'), 'test');
+    fs.unlinkSync(path.join(testDir, '.test'));
+    uploadDir = testDir;
+    console.log('✅ 使用雲端永久硬碟：' + uploadDir);
+  } else {
+    uploadDir = path.join(__dirname, 'public', 'uploads');
+  }
+} catch (err) {
+  uploadDir = path.join(__dirname, 'public', 'uploads');
+  console.log('⚠️ 雲端硬碟無法寫入，改用本機目錄：' + uploadDir);
+}
+if (!fs.existsSync(uploadDir)) {
+  fs.mkdirSync(uploadDir, { recursive: true });
+}
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, uploadDir),
@@ -51,7 +71,6 @@ app.post('/api/place-order', (req, res) => {
   const totalPrice = parsedItems.reduce((sum, i) => sum + (i.price * i.qty), 0);
 
   try {
-    // 檢查庫存並扣減
     const data = db.readData();
     for (let item of parsedItems) {
       const card = data.cards.find(c => c.card_code === item.card_code);
@@ -60,7 +79,6 @@ app.post('/api/place-order', (req, res) => {
       }
       card.stock -= item.qty;
     }
-    // 建立訂單
     const newOrder = {
       order_number: orderNumber,
       customer_nickname: nickname,
@@ -70,7 +88,7 @@ app.post('/api/place-order', (req, res) => {
       created_at: new Date().toISOString()
     };
     db.addOrder(newOrder);
-    db.writeData(data); // 寫回庫存變更
+    db.writeData(data);
     res.json({ success: true, orderNumber });
   } catch (error) {
     res.json({ success: false, msg: error.message });
@@ -133,14 +151,12 @@ app.post('/admin/cancel-order/:orderNumber', (req, res) => {
   const order = db.getOrder(orderNumber);
   if (!order || order.status !== 'pending') return res.send('訂單不存在或已取消');
 
-  // 加回庫存
   const items = JSON.parse(order.items);
   const data = db.readData();
   for (let item of items) {
     const card = data.cards.find(c => c.card_code === item.card_code);
     if (card) card.stock += item.qty;
   }
-  // 更新訂單狀態
   db.updateOrderStatus(orderNumber, 'cancelled');
   db.writeData(data);
   res.redirect('/admin/dashboard?msg=✅ 訂單已取消，庫存已自動加回');
